@@ -1,0 +1,10 @@
+__pycache__/
+*.py[c[0-9]*
+*.db
+.env
+.venv/
+venv/
+uploads/*
+!uploads/.gitkeep
+.pytest_cache/
+.DS_Store

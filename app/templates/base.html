@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Stitch It{% endblock %}</title><link rel="stylesheet" href="/static/css/style.css"></head>
+<body><header class="nav"><a class="brand" href="/">✦ STITCH IT</a><nav>
+<a href="/">Home</a>{% if user %}<a href="/dashboard">Dashboard</a><form class="inline" method="post" action="/logout"><button class="navbtn">Logout</button></form>{% else %}<a href="/login">Login</a><a class="nav-cta" href="/register">Get started</a>{% endif %}</nav></header>
+<main>{% if error %}<div class="alert">{{ error }}</div>{% endif %}{% block content %}{% endblock %}</main>
+<footer>STITCH IT · Measure Right. Stitch Smart. Deliver Perfect.</footer><script src="/static/js/app.js"></script></body></html>
