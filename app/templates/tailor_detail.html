@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ profile.shop_name or profile.user.name }} · Stitch It{% endblock %}
+{% block content %}
+<section class="dash-head">
+  <span class="eyebrow">AVAILABLE TAILOR STUDIO</span>
+  <h1>{{ profile.shop_name or profile.user.name }}</h1>
+  <p>{{ profile.location or "Location not listed" }} · {{ profile.user.phone or "Contact details not listed" }}</p>
+  <p>{{ profile.bio or "This studio has not added a description yet." }}</p>
+  {% if business %}<p>{{ business.shop_address }}{% if business.experience_years %} · {{ business.experience_years }} years of experience{% endif %}{% if business.working_hours %} · {{ business.working_hours }}{% endif %}</p>{% endif %}
+</section>
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">PRICING</span><h2>Configured services</h2></div></div>
+  {% if services %}
+    <div class="grid three">{% for item in services %}<article class="tile"><span>{{ item.category }}</span><h3>{{ item.name }}</h3><b>₹{{ "%.2f"|format(item.price) }}</b></article>{% endfor %}</div>
+  {% else %}<p class="muted">Service details are not listed. Base blouse stitching: ₹{{ "%.2f"|format(profile.blouse_price) }}.</p>{% endif %}
+  {% if user and user.role == "customer" %}<a class="btn" href="/dashboard">Place an order</a>{% else %}<a class="btn" href="/register">Create a customer account to order</a>{% endif %}
+</section>
+{% endblock %}

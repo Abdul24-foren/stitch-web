@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Order {{ details.order_reference if details else order.id }} · Stitch It{% endblock %}
+{% block content %}
+<section class="dash-head">
+  <span class="eyebrow">ORDER DETAILS</span>
+  <h1>{{ details.order_reference if details else "Order #" ~ order.id }}</h1>
+  <p>{{ order.design.name }} · {{ details.garment_type if details else "Saree blouse" }} · ₹{{ "%.2f"|format(order.amount) }}</p>
+  <span class="status">{{ order.status.replace("_"," ") }}</span>
+  {% if details %}<p>Payment: {{ details.payment_status.replace("_"," ") }}. Online payment is not configured.</p>{% endif %}
+</section>
+<section class="section grid two">
+  <article class="tile"><span>ORDER PARTIES</span><h3>Customer</h3><p>{{ order.customer.name }} · {{ order.customer.phone or "Phone not provided" }}</p><h3>Tailor</h3><p>{{ order.tailor.tailor_profile.shop_name or order.tailor.name }} · {{ order.tailor.phone or "Phone not provided" }}</p></article>
+  <article class="tile"><span>DESIGN AND PRICE</span><h3>{{ order.design.name }}</h3><p>{{ order.design.description }}</p><p>Order total: ₹{{ "%.2f"|format(order.amount) }}</p>
+    {% if details %}<p>Fabric: {{ details.fabric_details or "Not specified" }}</p><p>Instructions: {{ details.instructions or "Not specified" }}</p>
+      {% if details.reference_image_id %}<p><a href="/orders/{{ order.id }}/reference">View design reference image</a></p>{% endif %}
+      {% if details.address_snapshot and address %}<h3>Delivery address</h3><p>{{ address.get("recipient_name","") }} · {{ address.get("phone","") }}<br>{{ address.get("address_line","") }}, {{ address.get("city","") }} {{ address.get("postal_code","") }}</p>{% endif %}
+    {% else %}<p>{{ order.notes }}</p>{% endif %}
+  </article>
+</section>
+{% if snapshot %}
+<section class="section"><h2>Measurement snapshot · cm</h2><article class="tile">
+  <p>Measurements are manually entered by the customer. They are not AI estimates.</p>
+  <p>Bust: {{ snapshot.get("bust") or "—" }} · Waist: {{ snapshot.get("waist") or "—" }} · Shoulder: {{ snapshot.get("shoulder") or "—" }} · Armhole: {{ snapshot.get("armhole") or "—" }}</p>
+  <p>{{ snapshot.get("notes","") }}</p>
+</article></section>
+{% endif %}
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">PERSISTED HISTORY</span><h2>Order timeline</h2></div></div>
+  {% if events %}
+    <div class="stack">{% for event in events %}<article class="tile"><b>{{ event.status.replace("_"," ")|title }}</b><p>{{ event.created_at.strftime("%d %b %Y, %H:%M UTC") }} · {{ event.actor.name }}{% if event.note %} · {{ event.note }}{% endif %}</p></article>{% endfor %}</div>
+  {% else %}<p class="muted">No status history is available for this legacy order.</p>{% endif %}
+  {% if delivery_events %}
+    <h3>Delivery timeline</h3>
+    <div class="stack">{% for event in delivery_events %}<article class="tile"><b>{{ event.status.replace("_"," ")|title }}</b><p>{{ event.created_at.strftime("%d %b %Y, %H:%M UTC") }} · {{ event.actor.name }}{% if event.note %} · {{ event.note }}{% endif %}</p></article>{% endfor %}</div>
+  {% endif %}
+  {% if user.role == "customer" and order.status == "delivered" %}
+    <form method="post" action="/orders/{{ order.id }}/confirm" data-confirm="Confirm you received the garment?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn">Confirm receipt and complete order</button></form>
+  {% elif user.role == "customer" and order.status in ["pending","accepted"] %}
+    <form method="post" action="/orders/{{ order.id }}/cancel" data-confirm="Cancel this order?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Cancellation note<input name="reason" maxlength="500"></label><button class="btn danger">Cancel order</button></form>
+  {% endif %}
+  <a class="btn ghost top-gap" href="/dashboard">Back to dashboard</a>
+</section>
+{% endblock %}

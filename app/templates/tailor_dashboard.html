@@ -1,4 +1,135 @@
-{% extends "base.html" %}{% block title %}Tailor dashboard · Stitch It{% endblock %}{% block content %}
-<section class="dash-head"><span class="eyebrow">TAILOR STUDIO</span><h1>Welcome, {{ user.name }}.</h1><p>Keep every order moving, one stitch at a time.</p></section>
-<section class="section"><h2>Your studio profile</h2><form class="panel grid two" method="post" action="/tailor/profile"><label>Studio name<input name="shop_name" value="{{ profile.shop_name }}" required></label><label>Location<input name="location" value="{{ profile.location }}" required></label><label>Blouse stitching price (₹)<input name="blouse_price" type="number" min="0" step="1" value="{{ profile.blouse_price }}" required></label><label>About your studio<input name="bio" value="{{ profile.bio }}"></label><button class="btn">Save profile</button></form></section>
-<section class="section"><h2>Incoming and active orders</h2>{% if orders %}<div class="stack">{% for o in orders %}<article class="order-card"><div><b>Order #{{ o.id }} · {{ o.design.name }}</b><p>Customer: {{ o.customer.name }} · ₹{{ "%.0f"|format(o.amount) }}</p><small>{{ o.notes }}</small></div><div class="right"><span class="status">{{ o.status.replace("_"," ") }}</span>{% if o.status == "pending" %}<form method="post" action="/orders/{{ o.id }}/decision" class="actions"><button name="decision" value="accepted" class="btn small">Accept</button><button name="decision" value="rejected" class="btn small danger">Reject</button></form>{% elif o.status in ["accepted","stitching"] %}<form method="post" action="/orders/{{ o.id }}/status" class="actions">{% if o.status == "accepted" %}<button name="status" value="stitching" class="btn small">Start stitching</button>{% else %}<button name="status" value="ready_for_pickup" class="btn small">Ready for pickup</button>{% endif %}</form>{% endif %}</div></article>{% endfor %}</div>{% else %}<p class="muted">New customer orders will appear here.</p>{% endif %}</section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Tailor dashboard · Stitch It{% endblock %}
+{% block content %}
+<section class="dash-head">
+  <span class="eyebrow">TAILOR STUDIO</span><h1>Welcome, {{ user.name }}.</h1>
+  <p>Manage your studio and keep every order moving.</p>
+  <div class="grid five stats">
+    <article class="tile"><span>NEW</span><h3>{{ stats.pending }}</h3></article>
+    <article class="tile"><span>ACCEPTED</span><h3>{{ stats.accepted }}</h3></article>
+    <article class="tile"><span>IN PROGRESS</span><h3>{{ stats.active }}</h3></article>
+    <article class="tile"><span>READY</span><h3>{{ stats.ready }}</h3></article>
+    <article class="tile"><span>COMPLETED</span><h3>{{ stats.completed }}</h3></article>
+  </div>
+  <p class="muted">Earnings are unavailable because verified payment records are not configured.</p>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">YOUR BUSINESS</span><h2>Studio profile</h2></div></div>
+  <form class="panel grid two" method="post" action="/tailor/profile">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Studio name<input name="shop_name" value="{{ profile.shop_name }}" required maxlength="140"></label>
+    <label>Public location<input name="location" value="{{ profile.location }}" required maxlength="180"></label>
+    <label>Contact phone<input value="{{ user.phone }}" disabled></label>
+    <label>Studio address<input name="shop_address" value="{{ business.shop_address if business else '' }}" maxlength="300"></label>
+    <label>Experience (years)<input name="experience_years" type="number" min="0" max="80" value="{{ business.experience_years if business else 0 }}"></label>
+    <label>Working hours<input name="working_hours" value="{{ business.working_hours if business else '' }}" maxlength="200" placeholder="e.g. Mon–Sat, 10:00–18:00"></label>
+    <label>Blouse stitching base price (₹)<input name="blouse_price" type="number" min="0" step=".01" value="{{ profile.blouse_price }}" required></label>
+    <label class="span-all">About the studio<textarea name="bio" maxlength="2000" rows="3">{{ profile.bio }}</textarea></label>
+    <label class="check"><input type="checkbox" name="available" value="true" {% if profile.available %}checked{% endif %}> Accepting new orders</label>
+    <button class="btn">Save studio profile</button>
+  </form>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">SERVICES</span><h2>Stitching services</h2></div></div>
+  <form class="panel grid three" method="post" action="/tailor/services">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Service name<input name="name" required maxlength="120" placeholder="e.g. Bridal blouse finishing"></label>
+    <label>Garment category<input name="category" value="Saree blouse" maxlength="80"></label>
+    <label>Price (₹)<input name="price" type="number" min="0" step=".01" required></label>
+    <button class="btn">Add service</button>
+  </form>
+  {% if services %}
+    <div class="grid three top-gap">
+      {% for service in services %}
+        <article class="tile">
+          <span>{{ service.category }}{% if not service.active %} · PAUSED{% endif %}</span>
+          <h3>{{ service.name }}</h3><p>₹{{ "%.2f"|format(service.price) }}</p>
+          <form method="post" action="/tailor/services/{{ service.id }}/availability">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="active" value="{{ 'false' if service.active else 'true' }}">
+            <button class="btn small ghost">{{ "Pause" if service.active else "Make active" }}</button>
+          </form>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}<p class="muted">No services added yet.</p>{% endif %}
+</section>
+
+{% if notifications %}
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">ORDER UPDATES</span><h2>Notifications</h2></div>
+    <form method="post" action="/notifications/read"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small ghost">Mark all read</button></form>
+  </div>
+  <div class="stack">{% for notification in notifications %}<article class="tile"><p>{{ notification.message }}</p><small>{{ notification.created_at.strftime("%d %b %Y, %H:%M UTC") }}{% if not notification.read_at %} · New{% endif %}</small></article>{% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">WORK QUEUE</span><h2>Orders</h2></div></div>
+  <form method="get" action="/dashboard" class="panel grid three">
+    <label>Customer or order search<input name="search" value="{{ search }}" maxlength="80"></label>
+    <label>Status
+      <select name="status_filter">
+        <option value="">All statuses</option>
+        {% for status in ["pending","accepted","cutting","stitching","quality_check","ready_for_pickup","out_for_delivery","delivered","completed","rejected","cancelled"] %}
+          <option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{{ status.replace("_"," ")|title }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn">Filter orders</button>
+  </form>
+  {% if orders %}
+    <div class="stack top-gap">
+      {% for o in orders %}
+        <article class="order-card">
+          <div class="order-main">
+            <b>{{ o.order_details.order_reference if o.order_details else "Order #" ~ o.id }} · {{ o.design.name }}</b>
+            <p>Customer: {{ o.customer.name }} · ₹{{ "%.2f"|format(o.amount) }} · {{ o.created_at.strftime("%d %b %Y") }}</p>
+            {% if o.order_details %}
+              <p>{{ o.order_details.garment_type }}{% if o.order_details.fabric_details %} · Fabric: {{ o.order_details.fabric_details }}{% endif %}</p>
+              <small>{{ o.order_details.instructions }}</small>
+              {% if o.order_details.reference_image_id %}<p><a href="/orders/{{ o.id }}/reference">View customer design reference</a></p>{% endif %}
+              {% if order_measurements.get(o.id) %}
+                <p><b>Customer-entered measurements (cm)</b></p>
+                <small>Bust: {{ order_measurements[o.id].get("bust") or "—" }} · Waist: {{ order_measurements[o.id].get("waist") or "—" }} · Shoulder: {{ order_measurements[o.id].get("shoulder") or "—" }} · Armhole: {{ order_measurements[o.id].get("armhole") or "—" }} · Sleeve: {{ order_measurements[o.id].get("sleeve_length") or "—" }} · Neck: {{ order_measurements[o.id].get("neck") or "—" }} · Blouse length: {{ order_measurements[o.id].get("blouse_length") or "—" }}</small>
+              {% endif %}
+            {% else %}<small>{{ o.notes }}</small>{% endif %}
+          </div>
+          <div class="right">
+            <span class="status">{{ o.status.replace("_"," ") }}</span>
+            <a class="btn small ghost" href="/orders/{{ o.id }}">Order timeline</a>
+            {% if o.status == "pending" %}
+              <form method="post" action="/orders/{{ o.id }}/decision" class="actions">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button name="decision" value="accepted" class="btn small">Accept</button>
+              </form>
+              <form method="post" action="/orders/{{ o.id }}/decision" class="actions">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label>Rejection reason<input name="reason" required maxlength="500"></label>
+                <button name="decision" value="rejected" class="btn small danger">Reject</button>
+              </form>
+            {% elif next_order_status.get(o.status) %}
+              <form method="post" action="/orders/{{ o.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button name="status" value="{{ next_order_status[o.status] }}" class="btn small">Move to {{ next_order_status[o.status].replace("_"," ") }}</button>
+              </form>
+              {% if o.status == "quality_check" %}
+                <form method="post" action="/orders/{{ o.id }}/status">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button name="status" value="stitching" class="btn small ghost">Return for rework</button>
+                </form>
+              {% endif %}
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+    <div class="actions">
+      {% if page_number > 1 %}<a class="btn ghost" href="/dashboard?page_number={{ page_number - 1 }}&status_filter={{ status_filter }}&search={{ search }}">Newer orders</a>{% endif %}
+      {% if has_next %}<a class="btn ghost" href="/dashboard?page_number={{ page_number + 1 }}&status_filter={{ status_filter }}&search={{ search }}">Older orders</a>{% endif %}
+    </div>
+  {% else %}<p class="muted">No orders match this view.</p>{% endif %}
+</section>
+{% endblock %}

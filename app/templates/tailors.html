@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Find a tailor · Stitch It{% endblock %}
+{% block content %}
+<section class="dash-head"><span class="eyebrow">TAILOR DIRECTORY</span><h1>Find your fit.</h1><p>Browse registered studios that are currently accepting orders.</p></section>
+<section class="section">
+  <form method="get" action="/tailors" class="panel grid three">
+    <label>Name, studio, or location<input name="search" value="{{ search }}" maxlength="80"></label>
+    <label>Service category<input name="service" value="{{ service }}" maxlength="80" placeholder="Saree blouse"></label>
+    <label>Availability<select name="availability"><option value="available" {% if availability == "available" %}selected{% endif %}>Available</option><option value="unavailable" {% if availability == "unavailable" %}selected{% endif %}>Unavailable</option><option value="all" {% if availability == "all" %}selected{% endif %}>All studios</option></select></label>
+    <button class="btn">Search available tailors</button>
+  </form>
+  {% if tailors %}
+    <div class="grid three top-gap">
+      {% for tailor in tailors %}
+        <article class="tile">
+          <span>{{ tailor.location or "Location not listed" }} · {{ "AVAILABLE" if tailor.available else "UNAVAILABLE" }}</span>
+          <h3>{{ tailor.shop_name or tailor.user.name }}</h3>
+          <p>{{ tailor.bio or "Studio profile details are not listed yet." }}</p>
+          <p>Base blouse stitching: ₹{{ "%.2f"|format(tailor.blouse_price) }}</p>
+          <p>
+            {% for service_item in tailor.user.tailor_services if service_item.active %}
+              {{ service_item.name }} · ₹{{ "%.2f"|format(service_item.price) }}{% if not loop.last %}<br>{% endif %}
+            {% else %}Service details not listed{% endfor %}
+          </p>
+          {% if tailor.available %}<a class="btn small" href="/tailors/{{ tailor.user_id }}">View studio</a>{% else %}<span class="muted">This studio is not accepting orders.</span>{% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}<p class="muted">No available tailors match your search. Try another name, service, or location.</p>{% endif %}
+</section>
+{% endblock %}

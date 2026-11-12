@@ -1,5 +1,205 @@
-{% extends "base.html" %}{% block title %}Customer dashboard · Stitch It{% endblock %}{% block content %}
-<section class="dash-head"><span class="eyebrow">CUSTOMER SPACE</span><h1>Hello, {{ user.name }}.</h1><p>Your next favourite fit starts here.</p></section>
-<section class="section"><h2>Place a stitching order</h2><form class="panel order-form" method="post" action="/orders"><label>Choose a tailor<select name="tailor_id" required>{% for t in tailors %}<option value="{{ t.user_id }}">{{ t.shop_name or t.user.name }} · {{ t.location }} · ₹{{ "%.0f"|format(t.blouse_price) }} stitching</option>{% endfor %}</select></label><label>Choose a design<select name="design_id" required>{% for d in designs %}<option value="{{ d.id }}">{{ d.name }} (₹{{ "%.0f"|format(d.base_price) }} base)</option>{% endfor %}</select></label><label>Instructions / measurement notes<textarea name="notes" rows="3" placeholder="Fit preferences, measurements, sleeve details..."></textarea></label><button class="btn">Place order</button></form>{% if not tailors %}<p class="muted">No tailor profiles are available yet. Register a tailor account to get started.</p>{% endif %}</section>
-<section class="section"><h2>Save measurements (cm)</h2><form class="panel grid four" method="post" action="/measurements"><label>Profile name<input name="label" value="My measurements"></label><label>Bust<input name="bust" type="number" step=".1" min=".1" max="250"></label><label>Waist<input name="waist" type="number" step=".1" min=".1" max="250"></label><label>Shoulder<input name="shoulder" type="number" step=".1" min=".1" max="250"></label><label>Armhole<input name="armhole" type="number" step=".1" min=".1" max="250"></label><label class="span-all">Notes<input name="notes"></label><button class="btn">Save measurements</button></form><p class="muted">Camera-based AI measurement is not enabled in this MVP. Enter tape-verified measurements only.</p></section>
-<section class="section"><h2>Your orders</h2>{% if orders %}<div class="stack">{% for o in orders %}<article class="order-card"><div><b>#{{ o.id }} · {{ o.design.name }}</b><p>{{ o.tailor.name }} · {{ o.created_at.strftime("%d %b %Y") }}</p><small>{{ o.notes }}</small></div><div class="right"><span class="status">{{ o.status.replace("_"," ") }}</span><b>₹{{ "%.0f"|format(o.amount) }}</b></div></article>{% endfor %}</div>{% else %}<p class="muted">No orders yet. Your first custom piece is waiting.</p>{% endif %}</section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Customer dashboard · Stitch It{% endblock %}
+{% block content %}
+<section class="dash-head">
+  <span class="eyebrow">CUSTOMER SPACE</span>
+  <h1>Hello, {{ user.name }}.</h1>
+  <p>Your next favourite fit starts here.</p>
+  <div class="grid four stats">
+    <article class="tile"><span>TOTAL ORDERS</span><h3>{{ stats.total }}</h3></article>
+    <article class="tile"><span>PENDING</span><h3>{{ stats.pending }}</h3></article>
+    <article class="tile"><span>ACTIVE</span><h3>{{ stats.active }}</h3></article>
+    <article class="tile"><span>COMPLETED</span><h3>{{ stats.completed }}</h3></article>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">YOUR ACCOUNT</span><h2>Contact details</h2></div></div>
+  <form class="panel grid two" method="post" action="/customer/profile">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Name<input name="name" value="{{ profile.name }}" minlength="2" maxlength="120" required></label>
+    <label>Phone<input name="phone" value="{{ profile.phone }}" maxlength="30" autocomplete="tel"></label>
+    <p class="muted span-all">Email: {{ profile.email }}</p>
+    <button class="btn">Save profile</button>
+  </form>
+</section>
+
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">DELIVERY DETAILS</span><h2>Saved addresses</h2></div></div>
+  {% if addresses %}
+    <div class="grid two">
+      {% for address in addresses %}
+        <article class="tile">
+          <span>{{ address.label }}{% if address.is_default %} · DEFAULT{% endif %}</span>
+          <h3>{{ address.recipient_name }}</h3>
+          <p>{{ address.phone }}<br>{{ address.address_line }}<br>{{ address.city }} {{ address.postal_code }}</p>
+          <div class="actions">
+            {% if not address.is_default %}
+              <form method="post" action="/addresses/{{ address.id }}/default">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn small ghost">Make default</button>
+              </form>
+            {% endif %}
+            <form method="post" action="/addresses/{{ address.id }}/delete" data-confirm="Delete this saved address?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn small danger">Delete</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">Add a delivery address before placing your first order.</p>
+  {% endif %}
+  <h3>Add an address</h3>
+  <form class="panel grid two" method="post" action="/addresses">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Label<input name="label" value="Home" maxlength="60"></label>
+    <label>Recipient name<input name="recipient_name" required maxlength="120"></label>
+    <label>Phone<input name="phone" required maxlength="30"></label>
+    <label>Street address<input name="address_line" required maxlength="300"></label>
+    <label>City<input name="city" required maxlength="120"></label>
+    <label>Postal code<input name="postal_code" maxlength="20"></label>
+    <label class="check"><input type="checkbox" name="make_default" value="true"> Make this my default address</label>
+    <button class="btn">Save address</button>
+  </form>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <div><span class="eyebrow">CUSTOM ORDER</span><h2>Design your blouse</h2></div>
+    <a class="btn ghost" href="/tailors">Explore all tailors</a>
+  </div>
+  {% if not addresses %}<p class="alert">A saved delivery address is required before ordering.</p>{% endif %}
+  {% if tailors and designs and addresses %}
+    <form class="panel order-form" method="post" action="/orders" enctype="multipart/form-data" data-order-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="submission_key" value="{{ idempotency_key }}">
+      <label>Choose a tailor
+        <select name="tailor_id" required data-stitch-price>
+          {% for t in tailors %}<option value="{{ t.user_id }}" data-price="{{ t.blouse_price }}">{{ t.shop_name or t.user.name }} · {{ t.location or "Location not listed" }} · ₹{{ "%.2f"|format(t.blouse_price) }} stitching</option>{% endfor %}
+        </select>
+      </label>
+      <label>Garment design
+        <select name="design_id" required data-design-price>
+          {% for d in designs %}<option value="{{ d.id }}" data-price="{{ d.base_price }}">{{ d.name }} · ₹{{ "%.2f"|format(d.base_price) }} design</option>{% endfor %}
+        </select>
+      </label>
+      <label>Garment type<input name="garment_type" value="Saree blouse" required maxlength="100"></label>
+      <label>Saved measurement profile <small>(optional; tape-measured, cm)</small>
+        <select name="measurement_id"><option value="">No saved profile</option>{% for m in measurements %}<option value="{{ m.id }}">{{ m.label }} · {{ m.created_at.strftime("%d %b %Y") }}</option>{% endfor %}</select>
+      </label>
+      <details class="tile">
+        <summary>Or enter manual measurements for this order (cm)</summary>
+        <p class="muted">Leave all blank to order without a saved measurement. Do not enter manual values if you selected a saved profile.</p>
+        <div class="grid four top-gap">
+          <label>Bust<input name="manual_bust" type="number" step=".1" min=".1" max="250"></label>
+          <label>Waist<input name="manual_waist" type="number" step=".1" min=".1" max="250"></label>
+          <label>Shoulder<input name="manual_shoulder" type="number" step=".1" min=".1" max="250"></label>
+          <label>Armhole<input name="manual_armhole" type="number" step=".1" min=".1" max="250"></label>
+          <label>Sleeve length<input name="manual_sleeve_length" type="number" step=".1" min=".1" max="250"></label>
+          <label>Neck<input name="manual_neck" type="number" step=".1" min=".1" max="250"></label>
+          <label>Blouse length<input name="manual_blouse_length" type="number" step=".1" min=".1" max="250"></label>
+          <label class="span-all">Measurement notes<input name="measurement_notes" maxlength="1000"></label>
+        </div>
+      </details>
+      <label>Delivery address
+        <select name="address_id" required>
+          {% for address in addresses %}<option value="{{ address.id }}" {% if address.is_default %}selected{% endif %}>{{ address.label }} · {{ address.address_line }}, {{ address.city }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Fabric details<textarea name="fabric_details" rows="2" maxlength="1000" placeholder="Fabric type, colour, lining, or customer-supplied fabric"></textarea></label>
+      <label>Stitching instructions<textarea name="notes" rows="3" maxlength="3000" placeholder="Sleeve style, fit preferences, neck details..."></textarea></label>
+      <label>Reference image <small>(optional; JPG, PNG, or WebP up to 8 MB)</small><input type="file" name="image" accept="image/jpeg,image/png,image/webp"></label>
+      <p class="price-summary">Current configured estimate: <output data-order-estimate>₹0.00</output> <small>(final price is calculated by the server)</small></p>
+      {% if measurements %}<p class="muted">Manual measurements only. The tailor receives an order-time snapshot in centimetres.</p>{% else %}<p class="muted">No saved tape measurements yet. You can still add measurement notes above.</p>{% endif %}
+      <button class="btn" {% if not addresses %}disabled{% endif %}>Review and place order</button>
+    </form>
+  {% elif not tailors %}
+    <p class="muted">No available tailors are listed yet.</p>
+  {% endif %}
+</section>
+
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">MANUAL ONLY · CENTIMETRES</span><h2>Measurement profiles</h2></div></div>
+  <p class="muted">These are customer-entered tape measurements, not AI estimates. Each submitted order keeps an immutable snapshot.</p>
+  <form class="panel grid four" method="post" action="/measurements">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Profile name<input name="label" value="My measurements" maxlength="100"></label>
+    <label>Bust<input name="bust" type="number" step=".1" min=".1" max="250"></label>
+    <label>Waist<input name="waist" type="number" step=".1" min=".1" max="250"></label>
+    <label>Shoulder<input name="shoulder" type="number" step=".1" min=".1" max="250"></label>
+    <label>Armhole<input name="armhole" type="number" step=".1" min=".1" max="250"></label>
+    <label class="span-all">Notes<input name="notes" maxlength="2000"></label>
+    <button class="btn">Save measurements</button>
+  </form>
+  {% if measurements %}
+    <div class="stack top-gap">
+      {% for m in measurements %}
+        <details class="tile">
+          <summary><b>{{ m.label }}</b> · {{ m.created_at.strftime("%d %b %Y") }}</summary>
+          <form class="grid four top-gap" method="post" action="/measurements/{{ m.id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label>Profile name<input name="label" value="{{ m.label }}" maxlength="100" required></label>
+            <label>Bust<input name="bust" type="number" step=".1" min=".1" max="250" value="{{ m.bust if m.bust is not none else '' }}"></label>
+            <label>Waist<input name="waist" type="number" step=".1" min=".1" max="250" value="{{ m.waist if m.waist is not none else '' }}"></label>
+            <label>Shoulder<input name="shoulder" type="number" step=".1" min=".1" max="250" value="{{ m.shoulder if m.shoulder is not none else '' }}"></label>
+            <label>Armhole<input name="armhole" type="number" step=".1" min=".1" max="250" value="{{ m.armhole if m.armhole is not none else '' }}"></label>
+            <label class="span-all">Notes<input name="notes" value="{{ m.notes }}" maxlength="2000"></label>
+            <button class="btn small">Update profile</button>
+          </form>
+          <p class="muted">Saved order snapshots remain unchanged when this profile is edited.</p>
+          <form method="post" action="/measurements/{{ m.id }}/delete" data-confirm="Delete this unused measurement profile?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn small danger" {% if m.id in used_measurement_ids %}disabled title="Used in an order"{% endif %}>Delete unused profile</button>
+          </form>
+        </details>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">No saved profiles yet.</p>
+  {% endif %}
+</section>
+
+{% if notifications %}
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">ORDER UPDATES</span><h2>Notifications</h2></div>
+    <form method="post" action="/notifications/read"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small ghost">Mark all read</button></form>
+  </div>
+  <div class="stack">{% for notification in notifications %}<article class="tile"><p>{{ notification.message }}</p><small>{{ notification.created_at.strftime("%d %b %Y, %H:%M UTC") }}{% if not notification.read_at %} · New{% endif %}</small></article>{% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">YOUR HISTORY</span><h2>Orders</h2></div></div>
+  {% if orders %}
+    <div class="stack">
+      {% for o in orders %}
+        <article class="order-card">
+          <div><b>{{ o.order_details.order_reference if o.order_details else "Order #" ~ o.id }} · {{ o.design.name }}</b><p>{{ o.tailor.name }} · {{ o.created_at.strftime("%d %b %Y") }}</p><small>₹{{ "%.2f"|format(o.amount) }} · {{ o.status.replace("_", " ") }}</small></div>
+          <div class="right">
+            <a class="btn small" href="/orders/{{ o.id }}">View order</a>
+            {% if o.status in ["pending", "accepted"] %}
+              <form method="post" action="/orders/{{ o.id }}/cancel" data-confirm="Cancel this order?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small danger">Cancel</button>
+              </form>
+            {% elif o.status == "delivered" %}
+              <form method="post" action="/orders/{{ o.id }}/confirm" data-confirm="Confirm you received the garment?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small">Confirm receipt</button>
+              </form>
+            {% endif %}
+            <form method="post" action="/orders/{{ o.id }}/repeat">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="submission_key" value="{{ idempotency_key }}">
+              <button class="btn small ghost">Order again</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+    <div class="actions">
+      {% if page_number > 1 %}<a class="btn ghost" href="/dashboard?page_number={{ page_number - 1 }}">Newer orders</a>{% endif %}
+      {% if has_next %}<a class="btn ghost" href="/dashboard?page_number={{ page_number + 1 }}">Older orders</a>{% endif %}
+    </div>
+  {% else %}<p class="muted">No orders yet. Your first custom piece is waiting.</p>{% endif %}
+</section>
+{% endblock %}

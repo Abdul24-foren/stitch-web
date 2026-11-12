@@ -1,3 +1,94 @@
-{% extends "base.html" %}{% block title %}Delivery dashboard · Stitch It{% endblock %}{% block content %}
-<section class="dash-head"><span class="eyebrow">DELIVERY PARTNER</span><h1>Ready to move, {{ user.name }}?</h1><p>Claim a pickup and complete the final mile.</p></section>
-<section class="section"><h2>Available and assigned deliveries</h2>{% if deliveries %}<div class="stack">{% for d in deliveries %}<article class="order-card"><div><b>Delivery · Order #{{ d.order_id }}</b><p>{{ d.order.design.name }} · Customer: {{ d.order.customer.name }}</p><small>Tailor: {{ d.order.tailor.name }}</small></div><div class="right"><span class="status">{{ d.status.replace("_"," ") }}</span>{% if d.partner_id is none and d.order.status == "ready_for_pickup" %}<form method="post" action="/deliveries/{{ d.id }}/claim"><button class="btn small">Claim delivery</button></form>{% elif d.partner_id == user.id and d.status == "assigned" %}<form method="post" action="/deliveries/{{ d.id }}/status"><button class="btn small" name="status" value="picked_up">Mark picked up</button></form>{% elif d.partner_id == user.id and d.status == "picked_up" %}<form method="post" action="/deliveries/{{ d.id }}/status"><button class="btn small" name="status" value="delivered">Confirm delivered</button></form>{% endif %}</div></article>{% endfor %}</div>{% else %}<p class="muted">No deliveries available yet. Orders become available after the tailor marks them ready.</p>{% endif %}</section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Delivery dashboard · Stitch It{% endblock %}
+{% block content %}
+<section class="dash-head">
+  <span class="eyebrow">DELIVERY PARTNER</span><h1>Ready to move, {{ user.name }}?</h1>
+  <p>Assignment details are visible only to you after you claim a delivery.</p>
+  <div class="grid three stats">
+    <article class="tile"><span>AVAILABLE</span><h3>{{ stats.available }}</h3></article>
+    <article class="tile"><span>ACTIVE</span><h3>{{ stats.active }}</h3></article>
+    <article class="tile"><span>DELIVERED</span><h3>{{ stats.completed }}</h3></article>
+  </div>
+</section>
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">AVAILABILITY</span><h2>Delivery partner profile</h2></div></div>
+  <form class="panel" method="post" action="/delivery/profile">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="check"><input type="checkbox" name="available" value="true" {% if not profile or profile.available %}checked{% endif %}> Available for new assignments</label>
+    <button class="btn">Save availability</button>
+  </form>
+</section>
+{% if notifications %}
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">ASSIGNMENT UPDATES</span><h2>Notifications</h2></div>
+    <form method="post" action="/notifications/read"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small ghost">Mark all read</button></form>
+  </div>
+  <div class="stack">{% for notification in notifications %}<article class="tile"><p>{{ notification.message }}</p><small>{{ notification.created_at.strftime("%d %b %Y, %H:%M UTC") }}{% if not notification.read_at %} · New{% endif %}</small></article>{% endfor %}</div>
+</section>
+{% endif %}
+<section class="section">
+  <div class="section-head"><div><span class="eyebrow">PICKUP AND DELIVERY</span><h2>Assignments</h2></div></div>
+  {% if deliveries %}
+    <div class="stack">
+      {% for d in deliveries %}
+        {% set info = delivery_details[d.id] %}
+        <article class="order-card">
+          <div class="order-main">
+            <b>{{ info.reference }} · {{ d.order.design.name }}</b>
+            <p>Customer: {{ d.order.customer.name }} · Tailor: {{ d.order.tailor.name }}</p>
+            <small>Studio: {{ d.order.tailor.tailor_profile.shop_name or d.order.tailor.name }} · {{ d.order.tailor.tailor_profile.location }}</small>
+            {% if d.partner_id == user.id %}
+              <p><b>Customer delivery address</b><br>
+                {% if info.address %}{{ info.address.get("recipient_name","") }} · {{ info.address.get("phone","") }}<br>{{ info.address.get("address_line","") }}, {{ info.address.get("city","") }} {{ info.address.get("postal_code","") }}
+                {% else %}No address was saved with this legacy order. Contact support before proceeding.{% endif %}
+              </p>
+            {% else %}
+              <p class="muted">Claim this ready garment to reveal customer delivery details.</p>
+            {% endif %}
+          </div>
+          <div class="right">
+            <span class="status">{{ d.status.replace("_"," ") }}</span>
+            {% if d.partner_id is none and d.order.status == "ready_for_pickup" %}
+              <form method="post" action="/deliveries/{{ d.id }}/claim">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small">Accept assignment</button>
+              </form>
+            {% elif d.partner_id == user.id and d.status == "assigned" %}
+              <form method="post" action="/deliveries/{{ d.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small" name="status" value="arrived_at_tailor">Arrived at tailor</button>
+              </form>
+            {% elif d.partner_id == user.id and d.status == "arrived_at_tailor" %}
+              <form method="post" action="/deliveries/{{ d.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small" name="status" value="picked_up">Confirm pickup</button>
+              </form>
+            {% elif d.partner_id == user.id and d.status == "picked_up" %}
+              <form method="post" action="/deliveries/{{ d.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small" name="status" value="out_for_delivery">Start delivery</button>
+              </form>
+            {% elif d.partner_id == user.id and d.status == "out_for_delivery" %}
+              <form method="post" action="/deliveries/{{ d.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small" name="status" value="arrived_at_customer">Arrived at customer</button>
+              </form>
+            {% elif d.partner_id == user.id and d.status == "arrived_at_customer" %}
+              <form method="post" action="/deliveries/{{ d.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small" name="status" value="delivered">Confirm delivery</button>
+              </form>
+            {% endif %}
+            {% if d.partner_id == user.id and d.status in ["out_for_delivery","arrived_at_customer"] %}
+              <form method="post" action="/deliveries/{{ d.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label>Failed delivery reason<input name="reason" required maxlength="500"></label>
+                <button class="btn small danger" name="status" value="failed">Mark failed</button>
+              </form>
+            {% elif d.partner_id == user.id and d.status == "failed" %}
+              <form method="post" action="/deliveries/{{ d.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn small" name="status" value="out_for_delivery">Retry delivery</button>
+              </form>
+            {% endif %}
+            {% if d.partner_id == user.id %}<a class="btn small ghost" href="/orders/{{ d.order_id }}">Order details and history</a>{% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}<p class="muted">No ready assignments are available.</p>{% endif %}
+</section>
+{% endblock %}
